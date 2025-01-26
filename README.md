@@ -24,6 +24,13 @@ For example, to filter the output of the echo command, you can use:
 lx LOG echo "LOG: HELLO WORLD"
 ```
 
+The output will be as follows:
+
+```sh
+[2025-01-26T13:32:19+09:00][stdout]: LOG: HELLO WORLD
+Command executed successfully.
+```
+
 This command will filter the output and display only the lines containing the text hello.
 
 ## Contributing
