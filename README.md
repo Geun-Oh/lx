@@ -15,13 +15,13 @@ go install github.com/Geun-Oh/lx
 To use lx to run a command and filter its output, you can use the following command:
 
 ```sh
-lx <filter-text> <command> [command-args...]
+lx --keyword <your-keyword> <command> [command-args...]
 ```
 
 For example, to filter the output of the echo command, you can use:
 
 ```sh
-lx LOG echo "LOG: HELLO WORLD"
+lx --keyword LOG echo "LOG: HELLO WORLD"
 ```
 
 The output will be as follows:
