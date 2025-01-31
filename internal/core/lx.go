@@ -16,15 +16,14 @@ type logMessage struct {
 	message   string
 }
 
-func Extract(args []string) {
+func Extract(filteredText string, args []string) {
 	if len(args) < 2 {
 		fmt.Println("Usage: go run main.go <command> [args...]")
 		return
 	}
 
-	filteredText := args[0]
-	command := args[1]
-	commandArgs := args[2:]
+	command := args[0]
+	commandArgs := args[1:]
 
 	cmd := exec.Command(command, commandArgs...)
 
