@@ -1,40 +1,124 @@
-# :memo: lx
+# lx — Real-time Log Monitoring & Extraction Tool
 
-`lx` is a tool for running commands and filtering their output. It is similar to the `docker logs` command but with additional filtering capabilities (WIP).
+`lx` is a lightweight, high-performance CLI tool designed for real-time log monitoring, filtering, and extraction.  
+It combines the power of `grep`, `tail`, and `awk` into a modern, developer-friendly interface with built-in TUI, Docker support, and structured log parsing.
 
-## Installation
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Go](https://img.shields.io/badge/go-1.21+-00ADD8)
 
-To install this project, you need to have Go installed. Then, you can install the project by running the following command:
+## ✨ Key Features
 
-```sh
-go install github.com/Geun-Oh/lx
+- **Pipeline Architecture**: Modular design for Source → Filter → Sink processing.
+- **TUI Dashboard**: Interactive terminal UI with real-time viewport, scroll, search, and rate visualization.
+- **Smart Filtering**:
+  - Regex & Keyword support (AND/OR modes)
+  - Log Level auto-detection & filtering
+  - Context awareness (`--before`, `--after`)
+  - Noise reduction via `--exclude`
+- **Multi-Source**:
+  - `stdin` pipe support
+  - File following (`tail -f` style)
+  - **Docker** container log streaming (`--docker`)
+- **Structured Parsing**: Built-in **Grok** parser for extracting fields from unstructured logs.
+
+## 📦 Installation
+
+```bash
+go install github.com/Geun-Oh/lx@latest
 ```
 
-## Usage
+## 🚀 Usage
 
-To use lx to run a command and filter its output, you can use the following command:
+### basic
 
-```sh
-lx --keyword <your-keyword> <command> [command-args...]
+```bash
+# Execute command and filter logs
+lx -k ERROR -- ./my-app
+
+# Pipe from other tools
+kubectl logs -f pod-name | lx -k ERROR
 ```
 
-For example, to filter the output of the echo command, you can use:
+### Modes & Flags
 
-```sh
-lx --keyword LOG echo "LOG: HELLO WORLD"
+#### 1. Input Sources
+
+| Flag           | Description                | Example                  |
+| -------------- | -------------------------- | ------------------------ |
+| `--file, -f`   | Read from file             | `lx -f /var/log/syslog`  |
+| `--follow`     | Follow file (like tail -f) | `lx -f app.log --follow` |
+| `--docker, -d` | Stream logs from container | `lx -d my-container`     |
+| `stdin`        | Pipe input                 | `cat file.log \| lx`     |
+
+#### 2. Filtering
+
+| Flag            | Description                      | Example                         |
+| --------------- | -------------------------------- | ------------------------------- |
+| `--keyword, -k` | Filter by substring (repeatable) | `lx -k "timeout" -k "refused"`  |
+| `--regex, -r`   | Filter by regex pattern          | `lx -r "status=5\d{2}"`         |
+| `--level, -l`   | Filter by log severity           | `lx -l ERROR,WARN`              |
+| `--exclude, -e` | Exclude matching lines           | `lx -e "healthcheck"`           |
+| `--match-mode`  | Combine filters (`and`/`or`)     | `lx -k A -k B --match-mode and` |
+| `--before, -B`  | Print N lines before match       | `lx -k ERROR -B 5`              |
+| `--after, -A`   | Print N lines after match        | `lx -k ERROR -A 5`              |
+
+#### 3. TUI & Monitoring
+
+| Flag           | Description                      | Example                      |
+| -------------- | -------------------------------- | ---------------------------- |
+| `--tui`        | Launch interactive dashboard     | `lx --tui -k ERROR -- ./app` |
+| `--alert`      | Alert on regex match (TUI flash) | `lx --tui --alert "panic"`   |
+| `--alert-rate` | Alert on rate spike (lines/s)    | `lx --tui --alert-rate 100`  |
+| `--stats`      | Show summary on exit             | `lx --stats -- ./app`        |
+
+#### 4. Output & Parsing
+
+| Flag           | Description                    | Example                    |
+| -------------- | ------------------------------ | -------------------------- |
+| `--format`     | Output format (`text`, `json`) | `lx --format json`         |
+| `--color`      | Colorize output by level       | `lx --color`               |
+| `--output, -o` | Write to file                  | `lx -o filtered.log`       |
+| `--grok`       | Parse fields using Grok        | `lx --grok "%{IP:client}"` |
+
+### TUI keybindings
+
+- `/`: Search (type query, `Enter` to jump, `Esc` to cancel)
+- `p`: Pause/Resume auto-scroll
+- `g` / `G`: Jump to bottom / top
+- `↑` / `↓` : Scroll manualy
+- `q`: Quit
+
+## 💡 Examples
+
+**Monitor Docker logs for errors with TUI:**
+
+```bash
+lx --docker web-server --tui --level ERROR,WARN --alert "panic"
 ```
 
-The output will be as follows:
+**Extract structured data from access logs:**
 
-```sh
-[2025-01-26T13:32:19+09:00][stdout]: LOG: HELLO WORLD
-Command executed successfully.
+```bash
+lx -f access.log --grok "%{IP:client} %{WORD:method} %{NUMBER:duration}" --format json
 ```
 
-This command will filter the output and display only the lines containing the text hello.
+**Debug a crashing app with context:**
 
-## Contributing
-Contributions are welcome! You can contribute by reporting bugs, requesting features, or submitting pull requests.
+```bash
+./my-app | lx -k "panic" -B 10 -A 5 --color
+```
 
-## License
-This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for more details.
+## 🤝 Contribution
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the project.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
+
+## 📄 License
+
+Distributed under the **MIT License**. See `LICENSE` for more information.
