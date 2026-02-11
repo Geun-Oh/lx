@@ -9,6 +9,7 @@ import (
 	"github.com/Geun-Oh/lx/internal/entry"
 	"github.com/Geun-Oh/lx/internal/filter"
 	"github.com/Geun-Oh/lx/internal/monitor"
+	"github.com/Geun-Oh/lx/internal/parser"
 	"github.com/Geun-Oh/lx/internal/sink"
 	"github.com/Geun-Oh/lx/internal/source"
 )
@@ -20,7 +21,8 @@ type Config struct {
 	Sinks     []sink.Sink
 	Context   *filter.ContextBuffer // optional context lines
 	Stats     *monitor.Stats
-	RingBuf   *buffer.Ring // optional ring buffer for TUI search
+	RingBuf   *buffer.Ring       // optional ring buffer for TUI search
+	Grok      *parser.GrokParser // optional grok parser
 	ShowStats bool
 }
 
@@ -45,6 +47,11 @@ func Run(ctx context.Context, cfg *Config) error {
 		// Auto-detect log level if not set.
 		if e.Level == entry.LevelUnknown {
 			e.Level = filter.DetectLevel(e.Message)
+		}
+
+		// Parse structured fields via Grok (if configured).
+		if cfg.Grok != nil {
+			cfg.Grok.Parse(&e)
 		}
 
 		// Store in ring buffer (if configured).

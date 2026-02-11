@@ -8,6 +8,7 @@ import (
 	"github.com/Geun-Oh/lx/internal/entry"
 	"github.com/Geun-Oh/lx/internal/filter"
 	"github.com/Geun-Oh/lx/internal/monitor"
+	"github.com/Geun-Oh/lx/internal/parser"
 	"github.com/Geun-Oh/lx/internal/source"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -21,6 +22,7 @@ type RunConfig struct {
 	Rate    *monitor.RateDetector
 	Alerts  *monitor.AlertEngine
 	RingBuf *buffer.Ring
+	Grok    *parser.GrokParser
 }
 
 // Run starts the TUI dashboard with a live source pipeline.
@@ -42,6 +44,11 @@ func Run(ctx context.Context, cfg *RunConfig) error {
 			// Auto-detect level.
 			if e.Level == entry.LevelUnknown {
 				e.Level = filter.DetectLevel(e.Message)
+			}
+
+			// Parse structured fields via Grok (if configured).
+			if cfg.Grok != nil {
+				cfg.Grok.Parse(&e)
 			}
 
 			// Store in ring buffer.
