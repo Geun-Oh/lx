@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"sync"
+
 	"github.com/Geun-Oh/lx/internal/buffer"
 	"github.com/Geun-Oh/lx/internal/entry"
 	"github.com/Geun-Oh/lx/internal/filter"
@@ -28,6 +30,10 @@ type RunConfig struct {
 // Run starts the TUI dashboard with a live source pipeline.
 // This function blocks until the user quits.
 func Run(ctx context.Context, cfg *RunConfig) error {
+	// Create a cancellable context to ensure the source is stopped when the TUI exits.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	model := NewModel(cfg.Stats, cfg.Rate, cfg.Alerts, cfg.RingBuf, cfg.Source.Name())
 	program := tea.NewProgram(model, tea.WithAltScreen())
 
@@ -37,7 +43,10 @@ func Run(ctx context.Context, cfg *RunConfig) error {
 		return fmt.Errorf("tui: start source: %w", err)
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for e := range ch {
 			cfg.Stats.RecordLine()
 
@@ -93,6 +102,11 @@ func Run(ctx context.Context, cfg *RunConfig) error {
 	}()
 
 	_, err = program.Run()
+
+	// Ensure source is stopped and consumer finishes.
+	cancel()
+	wg.Wait()
+
 	return err
 }
 
