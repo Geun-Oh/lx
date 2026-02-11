@@ -13,6 +13,7 @@ import (
 	"github.com/Geun-Oh/lx/internal/entry"
 	"github.com/Geun-Oh/lx/internal/filter"
 	"github.com/Geun-Oh/lx/internal/monitor"
+	"github.com/Geun-Oh/lx/internal/parser"
 	"github.com/Geun-Oh/lx/internal/pipeline"
 	"github.com/Geun-Oh/lx/internal/sink"
 	"github.com/Geun-Oh/lx/internal/source"
@@ -33,11 +34,15 @@ var (
 	afterLines  int
 
 	// I/O flags.
-	inputFile  string
-	follow     bool
-	outputFile string
-	format     string
-	color      bool
+	inputFile       string
+	follow          bool
+	dockerContainer string
+	outputFile      string
+	format          string
+	color           bool
+
+	// Parser flags.
+	grokPattern string
 
 	// Stats flags.
 	showStats  bool
@@ -62,7 +67,9 @@ Examples:
   lx --level ERROR,WARN --color -- ./my-app
   kubectl logs -f pod-name | lx -k ERROR
   lx --file /var/log/app.log -k ERROR --follow --stats
-  lx --tui -k ERROR --alert "panic|OOM" -- ./my-app`,
+  lx --tui -k ERROR --alert "panic|OOM" -- ./my-app
+  lx --docker my-container -k ERROR --follow
+  lx --grok "%{IP:client} %{WORD:method} %{NOTSPACE:path}" --format json -- tail -f access.log`,
 		SilenceUsage: true,
 		RunE:         run,
 	}
@@ -85,9 +92,13 @@ func init() {
 	// I/O flags.
 	rootCmd.Flags().StringVarP(&inputFile, "file", "f", "", "read from file instead of executing a command")
 	rootCmd.Flags().BoolVar(&follow, "follow", false, "follow file for new lines (like tail -f)")
+	rootCmd.Flags().StringVarP(&dockerContainer, "docker", "d", "", "read from Docker container logs")
 	rootCmd.Flags().StringVarP(&outputFile, "output", "o", "", "write output to file")
 	rootCmd.Flags().StringVar(&format, "format", "text", "output format: text, json")
 	rootCmd.Flags().BoolVar(&color, "color", false, "colorize output by log level")
+
+	// Parser flags.
+	rootCmd.Flags().StringVar(&grokPattern, "grok", "", "grok pattern for structured log parsing")
 
 	// Stats and buffer flags.
 	rootCmd.Flags().BoolVar(&showStats, "stats", false, "show summary statistics on exit")
@@ -141,6 +152,16 @@ func run(cmd *cobra.Command, args []string) error {
 		alertEngine = ae
 	}
 
+	// --- Build parser ---
+	var grokParser *parser.GrokParser
+	if grokPattern != "" {
+		gp, err := parser.NewGrokParser(grokPattern)
+		if err != nil {
+			return err
+		}
+		grokParser = gp
+	}
+
 	// --- TUI mode ---
 	if useTUI {
 		return tui.Run(ctx, &tui.RunConfig{
@@ -151,6 +172,7 @@ func run(cmd *cobra.Command, args []string) error {
 			Rate:    rateDetector,
 			Alerts:  alertEngine,
 			RingBuf: ringBuf,
+			Grok:    grokParser,
 		})
 	}
 
@@ -167,6 +189,7 @@ func run(cmd *cobra.Command, args []string) error {
 		Context:   ctxBuf,
 		Stats:     stats,
 		RingBuf:   ringBuf,
+		Grok:      grokParser,
 		ShowStats: showStats,
 	}
 
@@ -190,6 +213,11 @@ func resolveSource(args []string) (source.Source, error) {
 	// File source.
 	if inputFile != "" {
 		return source.NewFileSource(inputFile, follow), nil
+	}
+
+	// Docker source.
+	if dockerContainer != "" {
+		return source.NewDockerSource(dockerContainer, follow), nil
 	}
 
 	// Stdin pipe (no args, data on stdin).
