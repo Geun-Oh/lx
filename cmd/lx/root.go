@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Geun-Oh/lx/internal/buffer"
 	"github.com/Geun-Oh/lx/internal/entry"
@@ -15,6 +16,7 @@ import (
 	"github.com/Geun-Oh/lx/internal/pipeline"
 	"github.com/Geun-Oh/lx/internal/sink"
 	"github.com/Geun-Oh/lx/internal/source"
+	"github.com/Geun-Oh/lx/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +43,11 @@ var (
 	showStats  bool
 	bufferSize int
 
+	// TUI flags.
+	useTUI    bool
+	alerts    []string
+	alertRate float64
+
 	rootCmd = &cobra.Command{
 		Use:   "lx [flags] [--] <command> [args...]",
 		Short: "lx — real-time log monitoring & extraction tool",
@@ -54,7 +61,8 @@ Examples:
   lx -r "status=[45]\d{2}" -- tail -f /var/log/nginx/access.log
   lx --level ERROR,WARN --color -- ./my-app
   kubectl logs -f pod-name | lx -k ERROR
-  lx --file /var/log/app.log -k ERROR --follow --stats`,
+  lx --file /var/log/app.log -k ERROR --follow --stats
+  lx --tui -k ERROR --alert "panic|OOM" -- ./my-app`,
 		SilenceUsage: true,
 		RunE:         run,
 	}
@@ -84,6 +92,11 @@ func init() {
 	// Stats and buffer flags.
 	rootCmd.Flags().BoolVar(&showStats, "stats", false, "show summary statistics on exit")
 	rootCmd.Flags().IntVar(&bufferSize, "buffer-size", 4096, "ring buffer capacity (entries)")
+
+	// TUI flags.
+	rootCmd.Flags().BoolVar(&useTUI, "tui", false, "launch interactive TUI dashboard")
+	rootCmd.Flags().StringArrayVar(&alerts, "alert", nil, "regex pattern to trigger alerts (repeatable)")
+	rootCmd.Flags().Float64Var(&alertRate, "alert-rate", 0, "alert when error rate exceeds N/sec")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -114,26 +127,59 @@ func run(cmd *cobra.Command, args []string) error {
 		ctxBuf = filter.NewContextBuffer(chain, beforeLines, afterLines)
 	}
 
-	// --- Build sinks ---
+	// --- Build monitoring ---
+	stats := monitor.NewStats()
+	ringBuf := buffer.NewRing(bufferSize)
+	rateDetector := monitor.NewRateDetector(30*time.Second, 3.0)
+
+	var alertEngine *monitor.AlertEngine
+	if len(alerts) > 0 {
+		ae, err := monitor.NewAlertEngine(alerts)
+		if err != nil {
+			return err
+		}
+		alertEngine = ae
+	}
+
+	// --- TUI mode ---
+	if useTUI {
+		return tui.Run(ctx, &tui.RunConfig{
+			Source:  src,
+			Filters: chain,
+			Context: ctxBuf,
+			Stats:   stats,
+			Rate:    rateDetector,
+			Alerts:  alertEngine,
+			RingBuf: ringBuf,
+		})
+	}
+
+	// --- Standard pipeline mode ---
 	sinks, err := buildSinks()
 	if err != nil {
 		return err
 	}
 
-	// --- Run pipeline ---
-	stats := monitor.NewStats()
 	cfg := &pipeline.Config{
 		Source:    src,
 		Filters:   chain,
 		Sinks:     sinks,
 		Context:   ctxBuf,
 		Stats:     stats,
-		RingBuf:   buffer.NewRing(bufferSize),
+		RingBuf:   ringBuf,
 		ShowStats: showStats,
 	}
 
 	if err := pipeline.Run(ctx, cfg); err != nil {
 		return err
+	}
+
+	// Print alert summary if alerts were configured.
+	if alertEngine != nil {
+		if summary := alertEngine.Summary(); summary != "" {
+			fmt.Println()
+			fmt.Println(summary)
+		}
 	}
 
 	return nil
